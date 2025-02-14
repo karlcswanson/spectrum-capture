@@ -35,13 +35,20 @@ var config Config
 
 func main() {
 	loadConfig()
+	mqttChannel, err := ConnectToMQTT(config.MQTTServerConfigs[0].Broker, config.MQTTServerConfigs[0].ClientID)
+	if err != nil {
+		fmt.Println("Error connecting to mqtt servers")
+	}
+	defer mqttChannel.StopMQTTConnection()
+	go mqttChannel.KeepSendingMessages()
+
 	command := config.RTLCommand
 	commands := strings.Split(command, " ")
 	// Create a channel for passing parsed output
 	dataChannel := make(chan RTLPowerLine)
 
 	// Start a goroutine to handle the output as it comes in
-	go processOutput(dataChannel)
+	go processOutput(dataChannel, mqttChannel)
 
 	// Create the command object
 	cmd := exec.Command(commands[0], commands[1:]...)
@@ -134,11 +141,22 @@ func parseOutput(outputLine string) *RTLPowerLine {
 }
 
 // Process the output received via the channel
-func processOutput(dataChannel <-chan RTLPowerLine) {
+func processOutput(dataChannel <-chan RTLPowerLine, mqttConnection *MQTTConnection) {
 	for data := range dataChannel {
 		// Print or process the received data
 		fmt.Printf("start: %v stop: %v counts: %d\n", data.HzLo, data.HzHigh, len(data.Power))
 		// Add additional logic here as needed
+
+		msg, err := json.Marshal(data)
+		if err != nil {
+			fmt.Printf("error \n")
+		}
+
+		mqttConnection.Messages <- MQTTMessage{
+			Topic:   "/scanner/stream",
+			Payload: msg,
+			Retain:  false,
+		}
 	}
 }
 
