@@ -152,7 +152,7 @@ func processOutput(dataChannel <-chan RTLPowerLine, mqttConnection *MQTTConnecti
 			fmt.Printf("error \n")
 		}
 
-		topic := fmt.Sprintf("/scanner/%s/stream", config.MQTTServerConfigs[0].ClientID)
+		topic := fmt.Sprintf("scanner/%s/stream", config.MQTTServerConfigs[0].ClientID)
 		mqttConnection.Messages <- MQTTMessage{
 			Topic:   topic,
 			Payload: msg,
