@@ -22,6 +22,9 @@ type Config struct {
 	RTLCommand        string       `json:"command"`
 	Name              string       `json:"name"`
 	Description       string       `json:"description"`
+	HzLo              float64      `json:"hz_lo"`
+	HzHi              float64      `json:"hz_hi"`
+	Step              float64      `json:"step"`
 	MQTTServerConfigs []MQTTConfig `json:"servers"`
 }
 
@@ -35,7 +38,12 @@ type RTLPowerLine struct {
 	Power     []float64 `json:"power"`
 }
 
+type ScanTable struct {
+	Power []float64
+}
+
 var config Config
+var scanTable ScanTable
 
 func main() {
 	loadConfig()
@@ -169,7 +177,7 @@ func processOutput(dataChannel <-chan RTLPowerLine, mqttConnection *MQTTConnecti
 		// Print or process the received data
 		fmt.Printf("start: %v stop: %v counts: %d\n", data.HzLo, data.HzHigh, len(data.Power))
 		// Add additional logic here as needed
-
+		scanManager(&data, mqttConnection)
 		msg, err := json.Marshal(data)
 		if err != nil {
 			fmt.Printf("error \n")
@@ -195,4 +203,44 @@ func loadConfig() {
 		fmt.Printf("Error loading config: %v\n", err)
 	}
 	fmt.Println("Configuration loaded successfully:", config)
+
+	length := int((config.HzHi - config.HzLo) / config.Step)
+	if length <= 0 {
+		log.Fatalf("Invalid configuration: HzHi must be greater than HzLo, and Step must be positive")
+	}
+
+	scanTable.Power = make([]float64, length)
+	fmt.Println(len(scanTable.Power))
+
+}
+
+func scanManager(line *RTLPowerLine, mqttConnection *MQTTConnection) {
+	index := int((line.HzLo - config.HzLo) / config.Step)
+	fmt.Println(index)
+	copy(scanTable.Power[index:], line.Power)
+
+	if line.HzHigh == config.HzHi {
+		fmt.Println("DONE")
+		pl := RTLPowerLine{
+			Id:        config.MQTTServerConfigs[0].ClientID,
+			Timestamp: line.Timestamp,
+			HzLo:      config.HzLo,
+			HzHigh:    config.HzHi,
+			Step:      config.Step,
+			Samples:   0,
+			Power:     scanTable.Power,
+		}
+
+		msg, err := json.Marshal(pl)
+		if err != nil {
+			fmt.Printf("error \n")
+		}
+
+		topic := fmt.Sprintf("scanner/%s/scan", config.MQTTServerConfigs[0].ClientID)
+		mqttConnection.Messages <- MQTTMessage{
+			Topic:   topic,
+			Payload: msg,
+			Retain:  true,
+		}
+	}
 }
