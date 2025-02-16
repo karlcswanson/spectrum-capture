@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	_ "github.com/joho/godotenv/autoload"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -19,13 +20,16 @@ type MQTTConfig struct {
 
 type Config struct {
 	RTLCommand        string       `json:"command"`
+	Name              string       `json:"name"`
+	Description       string       `json:"description"`
 	MQTTServerConfigs []MQTTConfig `json:"servers"`
 }
 
 type RTLPowerLine struct {
+	Id        string    `json:"id"`
 	Timestamp time.Time `json:"timestamp"`
 	HzLo      float64   `json:"hz_lo"`
-	HzHigh    float64   `json:"hz_high"`
+	HzHigh    float64   `json:"hz_hi"`
 	Step      float64   `json:"step"`
 	Samples   float64   `json:"samples"`
 	Power     []float64 `json:"power"`
@@ -60,6 +64,12 @@ func main() {
 		return
 	}
 
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		fmt.Printf("Error creating stdout pipe: %v\n", err)
+		return
+	}
+
 	// Start the command execution
 	if err := cmd.Start(); err != nil {
 		fmt.Printf("Error starting command: %v\n", err)
@@ -81,6 +91,17 @@ func main() {
 		close(dataChannel)
 	}()
 
+	errScanner := bufio.NewScanner(stderrPipe)
+	go func() {
+		for errScanner.Scan() {
+			log.Printf("rtl %s\n", errScanner.Text())
+
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Printf("Error while reading command output: %v\n", err)
+		}
+	}()
+
 	// Wait for the command to finish
 	if err := cmd.Wait(); err != nil {
 		fmt.Printf("Command execution ended with error: %v\n", err)
@@ -94,6 +115,7 @@ func parseOutput(outputLine string) *RTLPowerLine {
 		fmt.Printf("Invalid output line: %s\n", outputLine)
 		return nil
 	}
+	fmt.Println(outputLine)
 
 	timestamp, err := time.Parse("2006-01-02 15:04:05", strings.Join([]string{fields[0], fields[1]}, " "))
 	if err != nil {
@@ -131,6 +153,7 @@ func parseOutput(outputLine string) *RTLPowerLine {
 	}
 
 	return &RTLPowerLine{
+		Id:        config.MQTTServerConfigs[0].ClientID,
 		Timestamp: timestamp,
 		HzLo:      hzLo,
 		HzHigh:    hzHi,
