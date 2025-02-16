@@ -123,7 +123,7 @@ func parseOutput(outputLine string) *RTLPowerLine {
 		fmt.Printf("Invalid output line: %s\n", outputLine)
 		return nil
 	}
-	fmt.Println(outputLine)
+	//fmt.Println(outputLine)
 
 	timestamp, err := time.Parse("2006-01-02 15:04:05", strings.Join([]string{fields[0], fields[1]}, " "))
 	if err != nil {
@@ -216,7 +216,7 @@ func loadConfig() {
 
 func scanManager(line *RTLPowerLine, mqttConnection *MQTTConnection) {
 	index := int((line.HzLo - config.HzLo) / config.Step)
-	fmt.Println(index)
+	//fmt.Println(index)
 	copy(scanTable.Power[index:], line.Power)
 
 	if line.HzHigh == config.HzHi {
