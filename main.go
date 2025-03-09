@@ -22,9 +22,6 @@ type Config struct {
 	RTLCommand        string       `json:"command"`
 	Name              string       `json:"name"`
 	Description       string       `json:"description"`
-	HzLo              float64      `json:"hz_lo"`
-	HzHi              float64      `json:"hz_hi"`
-	Step              float64      `json:"step"`
 	MQTTServerConfigs []MQTTConfig `json:"servers"`
 }
 
@@ -39,7 +36,13 @@ type RTLPowerLine struct {
 }
 
 type ScanTable struct {
-	Power []float64
+	HzLo          float64
+	HzHigh        float64
+	Step          float64
+	Power         []float64
+	PowerTable    [][]float64
+	FirstScanDone bool
+	Counter       int
 }
 
 var config Config
@@ -175,7 +178,7 @@ func parseOutput(outputLine string) *RTLPowerLine {
 func processOutput(dataChannel <-chan RTLPowerLine, mqttConnection *MQTTConnection) {
 	for data := range dataChannel {
 		// Print or process the received data
-		fmt.Printf("start: %v stop: %v counts: %d\n", data.HzLo, data.HzHigh, len(data.Power))
+		fmt.Printf("start: %v stop: %v step: %v counts: %d\n", data.HzLo/1000000, data.HzHigh/1000000, data.Step, len(data.Power))
 		// Add additional logic here as needed
 		scanManager(&data, mqttConnection)
 		msg, err := json.Marshal(data)
@@ -204,29 +207,42 @@ func loadConfig() {
 	}
 	fmt.Println("Configuration loaded successfully:", config)
 
-	length := int((config.HzHi - config.HzLo) / config.Step)
-	if length <= 0 {
-		log.Fatalf("Invalid configuration: HzHi must be greater than HzLo, and Step must be positive")
-	}
+	//length := int((config.HzHi - config.HzLo) / config.Step)
+	//if length <= 0 {
+	//	log.Fatalf("Invalid configuration: HzHi must be greater than HzLo, and Step must be positive")
+	//}
 
-	scanTable.Power = make([]float64, length)
+	scanTable.Power = make([]float64, 0)
 	fmt.Println(len(scanTable.Power))
 
 }
 
 func scanManager(line *RTLPowerLine, mqttConnection *MQTTConnection) {
-	index := int((line.HzLo - config.HzLo) / config.Step)
-	//fmt.Println(index)
-	copy(scanTable.Power[index:], line.Power)
+	if scanTable.FirstScanDone == false {
+		if scanTable.HzLo == 0 {
+			scanTable.HzLo = line.HzLo
+			scanTable.Step = line.Step
+		}
 
-	if line.HzHigh == config.HzHi {
-		fmt.Println("DONE")
+		if line.HzHigh > scanTable.HzHigh {
+			scanTable.HzHigh = line.HzHigh
+		}
+		if line.HzHigh < scanTable.HzHigh {
+			scanTable.FirstScanDone = true
+			fmt.Printf("FIRST SCAN DONE start: %v %v\n", scanTable.HzLo/1000000, scanTable.HzHigh/1000000)
+		}
+	}
+
+	if scanTable.FirstScanDone && line.HzLo <= scanTable.HzLo {
+		scanTable.Counter += 1
+		fmt.Printf("DONE %d %d\n", scanTable.Counter, len(scanTable.Power))
+
 		pl := RTLPowerLine{
 			Id:        config.MQTTServerConfigs[0].ClientID,
 			Timestamp: line.Timestamp,
-			HzLo:      config.HzLo,
-			HzHigh:    config.HzHi,
-			Step:      config.Step,
+			HzLo:      scanTable.HzLo,
+			HzHigh:    scanTable.HzHigh,
+			Step:      scanTable.Step,
 			Samples:   0,
 			Power:     scanTable.Power,
 		}
@@ -242,5 +258,9 @@ func scanManager(line *RTLPowerLine, mqttConnection *MQTTConnection) {
 			Payload: msg,
 			Retain:  true,
 		}
+
+		scanTable.Power = make([]float64, 0)
 	}
+
+	scanTable.Power = append(scanTable.Power, line.Power...)
 }
