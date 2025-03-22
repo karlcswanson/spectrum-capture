@@ -15,7 +15,6 @@ A single json object is passed in via SPECTRUM_CFG in `.env`. This json snippet 
 
 ```
 SPECTRUM_CFG={ "name":"Lititz, PA", "description":"Pluto", "command" : "soapy_power -f 470M:608M -B 25k -c -k 50 -g 50 -r 2M", "servers" : [{ "broker" : "mqtt://localhost:1883", "client_id" : "06865db2-f4eb-4e59-9809-ef2b9b5af745"}]}
-
 ```
 
 ## Remote Development
